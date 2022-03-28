@@ -59,3 +59,6 @@ cat <<-_EOF_ > "${START_QEMU_SCRIPT}"
 _EOF_
 
 chmod +x "${START_QEMU_SCRIPT}"
+
+rm ${BINARIES_DIR}/start-qemu_riscv64.sh
+ln -s $PWD/${QEMU_BOARD_DIR}/riscv64-virt/start-qemu_riscv64.sh ${BINARIES_DIR}/
