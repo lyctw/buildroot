@@ -1,5 +1,6 @@
 #!/bin/sh
 set -x
+GDB="$PWD/output/host/bin/riscv64-buildroot-linux-gnu-gdb"
 (
 BINARIES_DIR="${0%/*}/"
 cd ${BINARIES_DIR}
@@ -8,6 +9,11 @@ if [ "${1}" = "serial-only" ]; then
     EXTRA_ARGS='-nographic'
 elif [ "${1}" = "debug" ]; then
     EXTRA_ARGS='-S -s' # port=1234
+
+    # $GDB -q -x "~/.gdbinit" \
+    #      -ex "target remote 0:1234" \
+    #      -ex "dashboard -output /dev/pts/X" \
+    #      "./fw_jump.elf"
 else
     EXTRA_ARGS=''
 fi
