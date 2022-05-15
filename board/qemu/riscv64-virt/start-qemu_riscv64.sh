@@ -22,6 +22,7 @@ export PATH="/home/peterlin/Labs/BR_QEMU_RV64/output/host/bin:${PATH}"
 TELNET_PORT="8888"
 
 exec qemu-system-riscv64 \
+        -smp 2 \
         -M virt \
         -bios fw_jump.elf \
         -kernel Image \
