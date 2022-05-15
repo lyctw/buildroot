@@ -62,3 +62,5 @@ chmod +x "${START_QEMU_SCRIPT}"
 
 rm ${BINARIES_DIR}/start-qemu_riscv64.sh
 ln -s $PWD/${QEMU_BOARD_DIR}/riscv64-virt/start-qemu_riscv64.sh ${BINARIES_DIR}/
+rm ${BINARIES_DIR}/gdb.sh
+ln -s $PWD/${QEMU_BOARD_DIR}/riscv64-virt/gdb.sh ${BINARIES_DIR}/
