@@ -14,14 +14,19 @@ VMLINUX="$LINUX_DIR/vmlinux"
 ADDR=$(${TOOLCHAIN}/riscv64-linux-readelf -a $VMLINUX | sed '29q;d' | cut -c 43-58)
 TEXT_ADDR="0x${ADDR}"
 
+if [ "${1}" = "tty" ]; then
+	TTY="/dev/pts/${2}"
+fi
+
 function gdb-attach() {
 $GDB -q -x $SCRIPT \
         -ex "target remote $TARGET" \
         -ex "set confirm off" \
         -ex "set pagination off" \
-        -ex "dashboard -output /dev/pts/3" \
+        -ex "dashboard -output $TTY" \
         -ex "add-symbol-file $VMLINUX $TEXT_ADDR" \
-        -ex "add-symbol-file $ELF_JUMP 0x80000000"
+        -ex "add-symbol-file $ELF_JUMP 0x80000000" \
+        $ELF_JUMP
 }
 gdb-attach
 
