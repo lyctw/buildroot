@@ -14,6 +14,10 @@ elif [ "${1}" = "debug" ]; then
     #      -ex "target remote 0:1234" \
     #      -ex "dashboard -output /dev/pts/X" \
     #      "./fw_jump.elf"
+elif [ "${1}" = "virtfs" ]; then
+    EXTRA_ARGS="--fsdev local,id=fsdev0,path=`pwd`,security_model=none \
+                -device virtio-9p-pci,fsdev=fsdev0,mount_tag=mydir"
+    # busybox: $ mount -t 9p -o trans=virtio,version=9p2000.L mydir /mnt
 else
     EXTRA_ARGS=''
 fi
@@ -35,3 +39,4 @@ exec qemu-system-riscv64 \
 )
 
 # connet from host: ssh root@127.0.0.1 -p ${TELNET_PORT}"
+
