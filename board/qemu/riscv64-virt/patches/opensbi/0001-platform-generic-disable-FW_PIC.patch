@@ -1,0 +1,24 @@
+From adf5b79a17bec61a451805feeede2624d28c74ec Mon Sep 17 00:00:00 2001
+From: Yu Chien Peter Lin <peterlin@andestech.com>
+Date: Sat, 16 Jul 2022 11:57:03 +0800
+Subject: [PATCH] platform: generic: disable FW_PIC
+
+---
+ platform/generic/config.mk | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/platform/generic/config.mk b/platform/generic/config.mk
+index 8151974..b3a79af 100644
+--- a/platform/generic/config.mk
++++ b/platform/generic/config.mk
+@@ -21,6 +21,7 @@ platform-runcmd = qemu-system-riscv$(PLATFORM_RISCV_XLEN) -M virt -m 256M \
+ FW_TEXT_START=0x80000000
+ FW_DYNAMIC=y
+ FW_JUMP=y
++FW_PIC=n
+ ifeq ($(PLATFORM_RISCV_XLEN), 32)
+   # This needs to be 4MB aligned for 32-bit system
+   FW_JUMP_ADDR=$(shell printf "0x%X" $$(($(FW_TEXT_START) + 0x400000)))
+-- 
+2.34.1
+

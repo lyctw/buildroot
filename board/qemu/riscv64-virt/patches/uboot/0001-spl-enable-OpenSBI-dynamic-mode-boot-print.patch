@@ -1,0 +1,25 @@
+From f400668a651698a046e2df0869b1d734fdcf9f8c Mon Sep 17 00:00:00 2001
+From: Yu Chien Peter Lin <peterlin@andestech.com>
+Date: Mon, 11 Jul 2022 19:49:28 +0800
+Subject: [PATCH] spl: enable OpenSBI dynamic mode boot print
+
+Signed-off-by: Yu Chien Peter Lin <peterlin@andestech.com>
+---
+ common/spl/spl_opensbi.c | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/common/spl/spl_opensbi.c b/common/spl/spl_opensbi.c
+index 1c0abf85..d5ce9f70 100644
+--- a/common/spl/spl_opensbi.c
++++ b/common/spl/spl_opensbi.c
+@@ -71,7 +71,6 @@ void spl_invoke_opensbi(struct spl_image_info *spl_image)
+ 	opensbi_info.version = FW_DYNAMIC_INFO_VERSION;
+ 	opensbi_info.next_addr = uboot_entry;
+ 	opensbi_info.next_mode = FW_DYNAMIC_INFO_NEXT_MODE_S;
+-	opensbi_info.options = SBI_SCRATCH_NO_BOOT_PRINTS;
+ 	opensbi_info.boot_hart = gd->arch.boot_hart;
+ 
+ 	opensbi_entry = (void (*)(ulong, ulong, ulong))spl_image->entry_point;
+-- 
+2.34.1
+
