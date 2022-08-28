@@ -9,7 +9,10 @@ $QEMU -M virt \
 	-bios "./output/build/uboot-2022.01/spl/u-boot-spl" \
 	-device loader,file="./output/build/uboot-2022.01/u-boot.itb",addr=0x80200000 \
 	-device virtio-blk-device,drive=hd0 -drive file="./output/images/sdcard.img",id=hd0 \
-	-device virtio-net-device,netdev=eth0  -netdev user,id=eth0 \
+	-netdev user,id=net0,hostfwd=tcp::8787-:22 \
+	-device virtio-net-device,netdev=net0 \
+	--fsdev local,id=fsdev0,path=$(pwd),security_model=none \
+	-device virtio-9p-pci,fsdev=fsdev0,mount_tag=mydir \
 	-no-reboot
 
 }
@@ -20,8 +23,10 @@ $QEMU -M virt \
 	-bios "./output/build/uboot-2022.01/spl/u-boot-spl" \
 	-device loader,file="./output/build/uboot-2022.01/u-boot.itb",addr=0x80200000 \
 	-device virtio-blk-device,drive=hd0 -drive file="./output/images/sdcard.img",id=hd0 \
-	-device virtio-net-device,netdev=eth0  -netdev user,id=eth0 \
-	-no-reboot \
+	-netdev user,id=net0,hostfwd=tcp::8787-:22 \
+	-device virtio-net-device,netdev=net0 \
+	--fsdev local,id=fsdev0,path=$(pwd),security_model=none \
+	-device virtio-9p-pci,fsdev=fsdev0,mount_tag=mydir \
 	-S -s
 }
 
