@@ -1,0 +1,5 @@
+config BR2_PACKAGE_ERRNO
+	bool "errno"
+	depends on BR2_riscv
+	help
+	  print errno
