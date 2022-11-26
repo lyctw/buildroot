@@ -1,0 +1,8 @@
+config BR2_PACKAGE_LKMPG
+	bool "Linux kernel module programming guide"
+	depends on BR2_LINUX_KERNEL
+	help
+	  The examples of Linux kernel module programming guide
+
+comment "lkmpg needs a Linux kernel to be built"
+	depends on !BR2_LINUX_KERNEL
