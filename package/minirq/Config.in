@@ -1,0 +1,8 @@
+config BR2_PACKAGE_MINIRQ
+	bool "minirq"
+	depends on BR2_LINUX_KERNEL
+	help
+	  mini gpio irq driver
+
+comment "minirq needs a Linux kernel to be built"
+	depends on !BR2_LINUX_KERNEL
