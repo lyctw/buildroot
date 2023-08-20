@@ -42,8 +42,8 @@ exec qemu-system-riscv64 \
 	-bios u-boot-spl \
 	-device loader,file=u-boot.itb,addr=0x80200000 \
 	-device virtio-blk-device,drive=hd0 \
-	-drive file=sdcard.img,id=hd0 \
+	-drive file=sdcard.img,format=raw,id=hd0 \
 	-device virtio-net-device,netdev=eth0 \
 	-netdev user,id=eth0 \
-	-S -s ${EXTRA_ARGS}
+	${EXTRA_ARGS}
 )
