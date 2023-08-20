@@ -1,0 +1,7 @@
+# CONFIG_DRM is not set
+
+# Enable debug info
+CONFIG_DEBUG_INFO_DWARF5=y
+# CONFIG_DEBUG_INFO_NONE is not set
+CONFIG_READABLE_ASM=y
+CONFIG_GDB_SCRIPTS=y
