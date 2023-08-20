@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 set -x
 (
 BINARIES_DIR="${0%/*}/"
