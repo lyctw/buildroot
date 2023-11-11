@@ -1,0 +1,33 @@
+################################################################################
+#
+# rtl8723du
+#
+################################################################################
+
+RTL8723DU_VERSION = 5664ac5782a07eb220b144b295156063cc598780
+RTL8723DU_SITE = $(call github,lwfinger,rtl8723du,$(RTL8723DU_VERSION))
+RTL8723DU_LICENSE = GPL-2.0
+RTL8723DU_LICENSE_FILES = COPYING
+
+RTL8723DU_USER_EXTRA_CFLAGS = \
+	-DCONFIG_$(call qstrip,$(BR2_ENDIAN))_ENDIAN \
+	-DCONFIG_IOCTL_CFG80211 \
+	-DRTW_USE_CFG80211_STA_EVENT \
+	-Wno-error
+
+RTL8723DU_MODULE_MAKE_OPTS = \
+	CONFIG_PLATFORM_I386_PC=n \
+	CONFIG_RTL8723DU=m \
+	KVER=$(LINUX_VERSION_PROBED) \
+	KSRC=$(LINUX_DIR) \
+	USER_EXTRA_CFLAGS="$(RTL8723DU_USER_EXTRA_CFLAGS)"
+
+define RTL8723DU_LINUX_CONFIG_FIXUPS
+	$(call KCONFIG_ENABLE_OPT,CONFIG_NET)
+	$(call KCONFIG_ENABLE_OPT,CONFIG_WIRELESS)
+	$(call KCONFIG_ENABLE_OPT,CONFIG_CFG80211)
+	$(call KCONFIG_ENABLE_OPT,CONFIG_MMC)
+endef
+
+$(eval $(kernel-module))
+$(eval $(generic-package))

@@ -1,0 +1,12 @@
+config BR2_PACKAGE_RTL8723DU
+	bool "rtl8723du"
+	depends on !BR2_s390x
+	depends on BR2_LINUX_KERNEL
+	help
+	  rtl8723bs wifi driver
+
+	  https://github.com/lwfinger/rtl8723du
+
+comment "rtl8723du needs a Linux kernel to be built"
+	depends on !BR2_s390x
+	depends on !BR2_LINUX_KERNEL
