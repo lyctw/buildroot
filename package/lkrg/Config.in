@@ -1,0 +1,7 @@
+config BR2_PACKAGE_LKRG
+	bool "lkrg"
+	depends on BR2_LINUX_KERNEL
+	help
+	  Linux Kernel Runtime Guard
+
+	  https://github.com/lkrg-org/lkrg
