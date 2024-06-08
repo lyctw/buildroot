@@ -5,3 +5,8 @@ Run Linux in emulation with:
   qemu-system-riscv64 -M virt -bios none -kernel output/images/Image -append "rootwait root=/dev/vda ro" -drive file=output/images/rootfs.ext2,format=raw,id=hd0 -device virtio-blk-device,drive=hd0 -nographic -cpu rv64,mmu=off -netdev user,id=net0 -device virtio-net-device,netdev=net0 # qemu_riscv64_nommu_virt_defconfig
 
 The login prompt will appear in the terminal that started Qemu.
+
+Debug:
+
+  -S -gdb tcp::4680
+  ${CROSS_COMPILE}gdb -ex "target remote 127.0.0.1:4680"
