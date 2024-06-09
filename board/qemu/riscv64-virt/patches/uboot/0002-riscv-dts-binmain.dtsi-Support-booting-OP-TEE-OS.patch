@@ -1,0 +1,49 @@
+From 410e226826923378686f79b9e86e11651c4a3940 Mon Sep 17 00:00:00 2001
+From: Yu Chien Peter Lin <peterlin@andestech.com>
+Date: Mon, 10 Jun 2024 14:44:34 +0800
+Subject: [PATCH 2/8] riscv: dts: binmain.dtsi: Support booting OP-TEE OS
+
+Bootflow: U-Boot SPL => OpenSBI fw_dynamic (SM) => OP-TEE OS => U-Boot
+---
+ arch/riscv/dts/binman.dtsi | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
+
+diff --git a/arch/riscv/dts/binman.dtsi b/arch/riscv/dts/binman.dtsi
+index 9271de0ddf..668f57f32f 100644
+--- a/arch/riscv/dts/binman.dtsi
++++ b/arch/riscv/dts/binman.dtsi
+@@ -53,6 +53,19 @@
+ 					};
+ 				};
+ #endif
++#ifdef CONFIG_OPTEE
++				tee {
++					description = "OP-TEE";
++					type = "tee";
++					arch = "riscv";
++					compression = "none";
++					os = "tee";
++					load = /bits/ 64 <CONFIG_SPL_OPTEE_IMAGE_LOAD_ADDR>;
++					tee_blob: tee-os {
++						filename = "tee.bin";
++					};
++				};
++#endif
+ 
+ 				opensbi {
+ 					description = "OpenSBI fw_dynamic Firmware";
+@@ -89,7 +102,11 @@
+ 					description = "NAME";
+ 					firmware = "opensbi";
+ #ifndef CONFIG_SPL_LOAD_FIT_OPENSBI_OS_BOOT
++#ifdef CONFIG_OPTEE
++					loadables = "uboot", "tee";
++#else
+ 					loadables = "uboot";
++#endif /* CONFIG_OPTEE */
+ #else
+ 					loadables = "linux";
+ #endif
+-- 
+2.34.1
+

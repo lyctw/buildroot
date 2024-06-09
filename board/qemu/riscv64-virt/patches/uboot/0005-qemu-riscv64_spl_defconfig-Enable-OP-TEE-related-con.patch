@@ -1,0 +1,25 @@
+From b9111c476b0e7de6350434d37b6d89bbb3bfd204 Mon Sep 17 00:00:00 2001
+From: Yu Chien Peter Lin <peterlin@andestech.com>
+Date: Mon, 11 Mar 2024 15:36:19 +0800
+Subject: [PATCH 5/8] qemu-riscv64_spl_defconfig: Enable OP-TEE related configs
+
+---
+ configs/qemu-riscv64_spl_defconfig | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/configs/qemu-riscv64_spl_defconfig b/configs/qemu-riscv64_spl_defconfig
+index 220b5fed6a..b88a2fc625 100644
+--- a/configs/qemu-riscv64_spl_defconfig
++++ b/configs/qemu-riscv64_spl_defconfig
+@@ -24,4 +24,8 @@ CONFIG_SYS_RELOC_GD_ENV_ADDR=y
+ CONFIG_DM_MTD=y
+ CONFIG_FLASH_SHOW_PROGRESS=0
+ CONFIG_SYS_MAX_FLASH_BANKS=2
++CONFIG_TEE=y
++CONFIG_OPTEE=y
++# CONFIG_CHIMP_OPTEE is not set
+ # CONFIG_BINMAN_FDT is not set
++# CONFIG_OPTEE_LIB is not set
+-- 
+2.34.1
+

@@ -1,0 +1,21 @@
+From e5ed5df43372e6ad5cf21a86022c954dc58bbc31 Mon Sep 17 00:00:00 2001
+From: Yu Chien Peter Lin <peterlin@andestech.com>
+Date: Tue, 16 Apr 2024 15:00:34 +0800
+Subject: [PATCH 8/8] [TEMP] qemu-riscv64_spl_defconfig: Print OpenSBI info
+
+---
+ configs/qemu-riscv64_spl_defconfig | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/configs/qemu-riscv64_spl_defconfig b/configs/qemu-riscv64_spl_defconfig
+index 37d46cedbb..527c3a6b46 100644
+--- a/configs/qemu-riscv64_spl_defconfig
++++ b/configs/qemu-riscv64_spl_defconfig
+@@ -31,3 +31,4 @@ CONFIG_OPTEE=y
+ # CONFIG_CHIMP_OPTEE is not set
+ # CONFIG_BINMAN_FDT is not set
+ # CONFIG_OPTEE_LIB is not set
++CONFIG_SPL_OPENSBI_SCRATCH_OPTIONS=0x0
+-- 
+2.34.1
+
