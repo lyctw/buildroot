@@ -1,0 +1,187 @@
+From 7d3dd4108c04a405e4b861b11183127fc42d3c73 Mon Sep 17 00:00:00 2001
+From: Alvin Chang <alvinga@andestech.com>
+Date: Tue, 5 Mar 2024 23:49:42 +0800
+Subject: [PATCH 59/63] Add per-hart RPXY share memory for two domains
+
+---
+ include/sbi/sbi_domain.h      |  4 +++
+ include/sbi/sbi_rpxy.h        | 10 ++++++
+ lib/sbi/sbi_ecall_hsm.c       |  2 +-
+ lib/sbi/sbi_rpxy.c            | 10 ------
+ lib/utils/rpxy/fdt_rpxy_spd.c | 60 ++++++++++++++++++++++++++++-------
+ 5 files changed, 64 insertions(+), 22 deletions(-)
+
+diff --git a/include/sbi/sbi_domain.h b/include/sbi/sbi_domain.h
+index 3cf5889..5432dac 100644
+--- a/include/sbi/sbi_domain.h
++++ b/include/sbi/sbi_domain.h
+@@ -213,6 +213,10 @@ void sbi_update_hartindex_to_domain(u32 hartindex, struct sbi_domain *dom);
+ #define sbi_domain_thishart_ptr() \
+ 	sbi_hartindex_to_domain(sbi_hartid_to_hartindex(current_hartid()))
+ 
++/** Get pointer to sbi_domain for specific HART */
++#define sbi_domain_hart_ptr(hartid) \
++	sbi_hartindex_to_domain(sbi_hartid_to_hartindex(hartid))
++
+ /** Index to domain table */
+ extern struct sbi_domain *domidx_to_domain_table[];
+ 
+diff --git a/include/sbi/sbi_rpxy.h b/include/sbi/sbi_rpxy.h
+index a53c6c7..a62ebb1 100644
+--- a/include/sbi/sbi_rpxy.h
++++ b/include/sbi/sbi_rpxy.h
+@@ -73,6 +73,16 @@ struct rpxy_state {
+ 	unsigned long shmem_addr;
+ };
+ 
++/** Get the context pointer for a given hart index and domain */
++#define sbi_hartindex_to_domain_rs(__hartindex, __d) \
++	(__d)->hartindex_to_rs_table[__hartindex]
++
++/** Macro to obtain the current hart's context pointer */
++#define sbi_domain_rs_thishart_ptr()                  \
++	sbi_hartindex_to_domain_rs(                   \
++		sbi_hartid_to_hartindex(current_hartid()), \
++		sbi_domain_thishart_ptr())
++
+ /** Check if some RPMI proxy service group is available */
+ bool sbi_rpxy_service_group_available(void);
+ 
+diff --git a/lib/sbi/sbi_ecall_hsm.c b/lib/sbi/sbi_ecall_hsm.c
+index 93170b0..b36efd8 100644
+--- a/lib/sbi/sbi_ecall_hsm.c
++++ b/lib/sbi/sbi_ecall_hsm.c
+@@ -27,7 +27,7 @@ static int sbi_ecall_hsm_handler(unsigned long extid, unsigned long funcid,
+ 
+ 	switch (funcid) {
+ 	case SBI_EXT_HSM_HART_START:
+-		ret = sbi_hsm_hart_start(scratch, sbi_domain_thishart_ptr(),
++		ret = sbi_hsm_hart_start(scratch, sbi_domain_hart_ptr(regs->a0),
+ 					 regs->a0, regs->a1, smode, regs->a2);
+ 		break;
+ 	case SBI_EXT_HSM_HART_STOP:
+diff --git a/lib/sbi/sbi_rpxy.c b/lib/sbi/sbi_rpxy.c
+index fd8c813..8134726 100644
+--- a/lib/sbi/sbi_rpxy.c
++++ b/lib/sbi/sbi_rpxy.c
+@@ -21,16 +21,6 @@
+ /** List of RPMI proxy service groups */
+ static SBI_LIST_HEAD(rpxy_group_list);
+ 
+-/** Get the context pointer for a given hart index and domain */
+-#define sbi_hartindex_to_domain_rs(__hartindex, __d) \
+-	(__d)->hartindex_to_rs_table[__hartindex]
+-
+-/** Macro to obtain the current hart's context pointer */
+-#define sbi_domain_rs_thishart_ptr()                  \
+-	sbi_hartindex_to_domain_rs(                   \
+-		sbi_hartid_to_hartindex(current_hartid()), \
+-		sbi_domain_thishart_ptr())
+-
+ static struct sbi_rpxy_service *rpxy_find_service(
+ 					struct sbi_rpxy_service_group *grp,
+ 					u8 service_id)
+diff --git a/lib/utils/rpxy/fdt_rpxy_spd.c b/lib/utils/rpxy/fdt_rpxy_spd.c
+index 94f5aec..c748a8b 100644
+--- a/lib/utils/rpxy/fdt_rpxy_spd.c
++++ b/lib/utils/rpxy/fdt_rpxy_spd.c
+@@ -30,7 +30,6 @@ struct rpxy_spd_data {
+ 	u32 service_group_id;
+ 	int num_services;
+ 	struct sbi_rpxy_service *services;
+-    struct rpxy_spd_srv *dispatcher;
+ };
+ 
+ struct abi_entry_vectors {
+@@ -70,6 +69,34 @@ int spd_srv_setup(void *fdt, int nodeoff, const struct fdt_match *match)
+ 	return 0;
+ }
+ 
++static struct sbi_domain *__get_tdomain(void)
++{
++	int i;
++	struct sbi_domain *dom = NULL;
++	sbi_domain_for_each(i, dom)
++	{
++		if (!sbi_strcmp(dom->name, spd_domain_name)) {
++			return dom;
++		}
++	}
++
++	return NULL;
++}
++
++static struct sbi_domain *__get_udomain(void)
++{
++	int i;
++	struct sbi_domain *dom = NULL;
++	sbi_domain_for_each(i, dom)
++	{
++		if (!sbi_strcmp(dom->name, "untrusted-domain")) {
++			return dom;
++		}
++	}
++
++	return NULL;
++}
++
+ static int sbi_ecall_tee_domain_enter(unsigned long entry_point)
+ {
+ 	int i;
+@@ -95,8 +122,6 @@ static int sbi_ecall_tee_domain_exit(void)
+ 	return 0;
+ }
+ 
+-static unsigned long *ree_rx = 0;
+-static unsigned long *tee_rx = 0;
+ static int spd_srv_handler(struct sbi_rpxy_service_group *grp,
+ 				  struct sbi_rpxy_service *srv,
+ 				  void *tx, u32 tx_len,
+@@ -104,10 +129,14 @@ static int spd_srv_handler(struct sbi_rpxy_service_group *grp,
+ 				  unsigned long *ack_len)
+ {
+ 	int srv_id = srv->id;
++	struct rpxy_state *rs;
++
+ 	if (SPD_BASE_SRV_COMMUNICATE == srv_id) {
+-		ree_rx = rx;
+-		sbi_memcpy(tee_rx, tx, tx_len);
+-		if (GET_ABI_ENTRY_TYPE(tee_rx[0]) == ABI_ENTRY_TYPE_FAST) {
++		/* Get per-hart RPXY share memory with tdomain */
++		rs = sbi_hartindex_to_domain_rs(
++			sbi_hartid_to_hartindex(current_hartid()), __get_tdomain());
++		sbi_memcpy((void *)rs->shmem_addr, tx, tx_len);
++		if (GET_ABI_ENTRY_TYPE(((ulong *)rs->shmem_addr)[0]) == ABI_ENTRY_TYPE_FAST) {
+ 			sbi_ecall_tee_domain_enter((unsigned long)
+ 					&entry_vector_table->fast_abi_entry);
+ 		} else {
+@@ -115,12 +144,21 @@ static int spd_srv_handler(struct sbi_rpxy_service_group *grp,
+ 					&entry_vector_table->yield_abi_entry);
+ 		}
+ 	} else if (SPD_BASE_SRV_COMPLETE == srv_id) {
+-		tee_rx = rx;
+-		if(ree_rx) {
+-			sbi_memcpy(ree_rx, tx, tx_len);
+-			*ack_len = tx_len;
++		/* Get per-hart RPXY share memory with udomain */
++		rs = sbi_hartindex_to_domain_rs(
++			sbi_hartid_to_hartindex(current_hartid()), __get_udomain());
++		if (rs->shmem_addr) {
++			/* tx has a0~a4. Just skip a0 and copy a1~a4 here */
++			sbi_memcpy((void *)rs->shmem_addr,
++				   &(((unsigned long *)tx)[1]),
++				   tx_len - sizeof(unsigned long));
++			*ack_len = tx_len - sizeof(unsigned long);
+ 		} else {
+-			entry_vector_table = (struct abi_entry_vectors *) (*(unsigned long *)tx);
++			if (((unsigned long *)tx)[0] == 0xBE000000) {
++				/* RETURN_INIT_DONE */
++				entry_vector_table = (struct abi_entry_vectors *) (((unsigned long *)tx)[1]);
++				sbi_printf("entry_vector_table = 0x%lX\n", (ulong)entry_vector_table);
++			}
+ 		}
+ 		sbi_ecall_tee_domain_exit();
+ 	}
+-- 
+2.34.1
+

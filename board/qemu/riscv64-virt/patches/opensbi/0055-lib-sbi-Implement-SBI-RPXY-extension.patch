@@ -1,0 +1,145 @@
+From 3d4d954cf1d6327d57d9a7bb63e0cb7659fe06d2 Mon Sep 17 00:00:00 2001
+From: Anup Patel <apatel@ventanamicro.com>
+Date: Mon, 21 Aug 2023 11:37:01 +0530
+Subject: [PATCH 55/63] lib: sbi: Implement SBI RPXY extension
+
+Implement SBI RPXY extension only when some RPMI proxy service
+group is provided by platform code or driver.
+
+Signed-off-by: Anup Patel <apatel@ventanamicro.com>
+---
+ include/sbi/sbi_ecall_interface.h |  8 ++++
+ lib/sbi/Kconfig                   |  4 ++
+ lib/sbi/objects.mk                |  3 ++
+ lib/sbi/sbi_ecall_rpxy.c          | 64 +++++++++++++++++++++++++++++++
+ 4 files changed, 79 insertions(+)
+ create mode 100644 lib/sbi/sbi_ecall_rpxy.c
+
+diff --git a/include/sbi/sbi_ecall_interface.h b/include/sbi/sbi_ecall_interface.h
+index 690c31b..3f3e9fb 100644
+--- a/include/sbi/sbi_ecall_interface.h
++++ b/include/sbi/sbi_ecall_interface.h
+@@ -33,6 +33,7 @@
+ #define SBI_EXT_SUSP				0x53555350
+ #define SBI_EXT_CPPC				0x43505043
+ #define SBI_EXT_DBTR				0x44425452
++#define SBI_EXT_RPXY				0x52505859
+ 
+ /* SBI function IDs for BASE extension*/
+ #define SBI_EXT_BASE_GET_SPEC_VERSION		0x0
+@@ -304,6 +305,13 @@ enum sbi_cppc_reg_id {
+ 	SBI_CPPC_NON_ACPI_LAST		= SBI_CPPC_TRANSITION_LATENCY,
+ };
+ 
++/* SBI function IDs for RPXY extension */
++#define SBI_EXT_RPXY_PROBE			0x0
++#define SBI_EXT_RPXY_SET_SHMEM			0x1
++#define SBI_EXT_RPXY_SEND_NORMAL_MESSAGE	0x2
++#define SBI_EXT_RPXY_SEND_POSTED_MESSAGE	0x3
++#define SBI_EXT_RPXY_GET_NOTIFICATION_EVENTS	0x4
++
+ /* SBI base specification related macros */
+ #define SBI_SPEC_VERSION_MAJOR_OFFSET		24
+ #define SBI_SPEC_VERSION_MAJOR_MASK		0x7f
+diff --git a/lib/sbi/Kconfig b/lib/sbi/Kconfig
+index e3038ee..1aa8582 100644
+--- a/lib/sbi/Kconfig
++++ b/lib/sbi/Kconfig
+@@ -38,6 +38,10 @@ config SBI_ECALL_CPPC
+ 	bool "CPPC extension"
+ 	default y
+ 
++config SBI_ECALL_RPXY
++	bool "RPXY extension"
++	default y
++
+ config SBI_ECALL_LEGACY
+ 	bool "SBI v0.1 legacy extensions"
+ 	default y
+diff --git a/lib/sbi/objects.mk b/lib/sbi/objects.mk
+index ec4d886..ca312ee 100644
+--- a/lib/sbi/objects.mk
++++ b/lib/sbi/objects.mk
+@@ -52,6 +52,9 @@ libsbi-objs-$(CONFIG_SBI_ECALL_DBCN) += sbi_ecall_dbcn.o
+ carray-sbi_ecall_exts-$(CONFIG_SBI_ECALL_CPPC) += ecall_cppc
+ libsbi-objs-$(CONFIG_SBI_ECALL_CPPC) += sbi_ecall_cppc.o
+ 
++carray-sbi_ecall_exts-$(CONFIG_SBI_ECALL_RPXY) += ecall_rpxy
++libsbi-objs-$(CONFIG_SBI_ECALL_RPXY) += sbi_ecall_rpxy.o
++
+ carray-sbi_ecall_exts-$(CONFIG_SBI_ECALL_LEGACY) += ecall_legacy
+ libsbi-objs-$(CONFIG_SBI_ECALL_LEGACY) += sbi_ecall_legacy.o
+ 
+diff --git a/lib/sbi/sbi_ecall_rpxy.c b/lib/sbi/sbi_ecall_rpxy.c
+new file mode 100644
+index 0000000..329b03b
+--- /dev/null
++++ b/lib/sbi/sbi_ecall_rpxy.c
+@@ -0,0 +1,64 @@
++/*
++ * SPDX-License-Identifier: BSD-2-Clause
++ *
++ * Copyright (c) 2023 Ventana Micro Systems Inc.
++ *
++ * Authors:
++ *   Anup Patel <apatel@ventanamicro.com>
++ */
++
++#include <sbi/sbi_ecall.h>
++#include <sbi/sbi_ecall_interface.h>
++#include <sbi/sbi_error.h>
++#include <sbi/sbi_trap.h>
++#include <sbi/sbi_rpxy.h>
++
++static int sbi_ecall_rpxy_handler(unsigned long extid, unsigned long funcid,
++				  struct sbi_trap_regs *regs,
++				  struct sbi_ecall_return *out)
++{
++	int ret = 0;
++
++	switch (funcid) {
++	case SBI_EXT_RPXY_PROBE:
++		ret = sbi_rpxy_probe(regs->a0, regs->a1, &out->value);
++		break;
++	case SBI_EXT_RPXY_SET_SHMEM:
++		ret = sbi_rpxy_set_shmem(regs->a0,
++					 regs->a1, regs->a2, regs->a3);
++		break;
++	case SBI_EXT_RPXY_SEND_NORMAL_MESSAGE:
++		ret = sbi_rpxy_send_message(regs->a0, regs->a1, regs->a2,
++					    regs->a3, &out->value);
++		break;
++	case SBI_EXT_RPXY_SEND_POSTED_MESSAGE:
++		ret = sbi_rpxy_send_message(regs->a0, regs->a1, regs->a2,
++					    regs->a3, NULL);
++		break;
++	case SBI_EXT_RPXY_GET_NOTIFICATION_EVENTS:
++		ret = sbi_rpxy_get_notification_events(regs->a0, regs->a1,
++							&out->value);
++		break;
++	default:
++		ret = SBI_ENOTSUPP;
++	}
++
++	return ret;
++}
++
++struct sbi_ecall_extension ecall_rpxy;
++
++static int sbi_ecall_rpxy_register_extensions(void)
++{
++	if (!sbi_rpxy_service_group_available())
++		return 0;
++
++	return sbi_ecall_register_extension(&ecall_rpxy);
++}
++
++struct sbi_ecall_extension ecall_rpxy = {
++	.extid_start		= SBI_EXT_RPXY,
++	.extid_end		= SBI_EXT_RPXY,
++	.register_extensions	= sbi_ecall_rpxy_register_extensions,
++	.handle			= sbi_ecall_rpxy_handler,
++};
+-- 
+2.34.1
+
