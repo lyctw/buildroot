@@ -40,25 +40,40 @@ ifeq ($(BR2_TARGET_OPTEE_OS_NEEDS_DTC),y)
 OPTEE_OS_DEPENDENCIES += host-dtc
 endif
 
+OPTEE_OS_MAKE_OPTS = \
+	CROSS_COMPILE="$(TARGET_CROSS)" \
+	CROSS_COMPILE_core="$(TARGET_CROSS)" \
+	PYTHON3="$(HOST_DIR)/bin/python3"
+
+ifeq ($(BR2_RISCV_64),y)
+OPTEE_OS_MAKE_OPTS += CROSS_COMPILE_ta_rv64="$(TARGET_CROSS)"
+else
 # On 64bit targets, OP-TEE OS can be built in 32bit mode, or
 # can be built in 64bit mode and support 32bit and 64bit
 # trusted applications. Since buildroot currently references
 # a single cross compiler, build exclusively in 32bit
 # or 64bit mode.
-OPTEE_OS_MAKE_OPTS = \
-	CROSS_COMPILE="$(TARGET_CROSS)" \
-	CROSS_COMPILE_core="$(TARGET_CROSS)" \
+OPTEE_OS_MAKE_OPTS += \
 	CROSS_COMPILE_ta_arm64="$(TARGET_CROSS)" \
-	CROSS_COMPILE_ta_arm32="$(TARGET_CROSS)" \
-	PYTHON3="$(HOST_DIR)/bin/python3"
+	CROSS_COMPILE_ta_arm32="$(TARGET_CROSS)"
+endif
 
+ifeq ($(BR2_riscv),y)
+OPTEE_OS_MAKE_OPTS += \
+	ARCH=riscv \
+	CFG_RV64_core=y \
+	CFG_USER_TA_TARGETS=ta_rv64
+else
 ifeq ($(BR2_aarch64),y)
 OPTEE_OS_MAKE_OPTS += \
+	ARCH=aarch64 \
 	CFG_ARM64_core=y \
 	CFG_USER_TA_TARGETS=ta_arm64
 else
 OPTEE_OS_MAKE_OPTS += \
+	ARCH=arm \
 	CFG_ARM32_core=y
+endif
 endif
 
 # Get mandatory PLAFORM and optional PLATFORM_FLAVOR and additional
@@ -80,6 +95,10 @@ endif
 ifeq ($(BR2_arm),y)
 OPTEE_OS_LOCAL_SDK = $(OPTEE_OS_BUILDDIR_OUT)/export-ta_arm32
 OPTEE_OS_SDK = $(STAGING_DIR)/lib/optee/export-ta_arm32
+endif
+ifeq ($(BR2_riscv),y)
+OPTEE_OS_LOCAL_SDK = $(OPTEE_OS_BUILDDIR_OUT)/export-ta_rv64
+OPTEE_OS_SDK = $(STAGING_DIR)/lib/optee/export-ta_rv64
 endif
 
 OPTEE_OS_IMAGE_FILES = $(call qstrip,$(BR2_TARGET_OPTEE_OS_CORE_IMAGES))
