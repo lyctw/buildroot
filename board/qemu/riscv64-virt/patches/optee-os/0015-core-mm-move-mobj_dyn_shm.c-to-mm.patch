@@ -1,0 +1,52 @@
+From f11d4f6daa42356c5c8c01c7f92acda876e7ebe3 Mon Sep 17 00:00:00 2001
+From: Alvin Chang <alvinga@andestech.com>
+Date: Fri, 23 Feb 2024 21:33:54 +0800
+Subject: [PATCH 15/17] core: mm: move mobj_dyn_shm.c to mm
+
+To enable RISC-V platforms to utilize dynamic shared memory,
+relocate the non-architecture-specific mobj_dyn_shm.c to the
+mm directory.
+
+Signed-off-by: Alvin Chang <alvinga@andestech.com>
+Reviewed-by: Yu Chien Peter Lin <peterlin@andestech.com>
+Reviewed-by: Jerome Forissier <jerome.forissier@linaro.org>
+---
+ core/arch/arm/mm/sub.mk               | 3 ---
+ core/{arch/arm => }/mm/mobj_dyn_shm.c | 0
+ core/mm/sub.mk                        | 4 +++-
+ 3 files changed, 3 insertions(+), 4 deletions(-)
+ rename core/{arch/arm => }/mm/mobj_dyn_shm.c (100%)
+
+diff --git a/core/arch/arm/mm/sub.mk b/core/arch/arm/mm/sub.mk
+index 1fff63560..ed92c12a4 100644
+--- a/core/arch/arm/mm/sub.mk
++++ b/core/arch/arm/mm/sub.mk
+@@ -7,9 +7,6 @@ srcs-y += core_mmu_v7.c
+ endif
+ srcs-$(CFG_CORE_FFA) += mobj_ffa.c
+ srcs-$(CFG_SECURE_PARTITION) += sp_mem.c
+-ifneq ($(CFG_CORE_FFA),y)
+-srcs-$(CFG_CORE_DYN_SHM) += mobj_dyn_shm.c
+-endif
+ 
+ ifeq ($(CFG_SYSCALL_FTRACE),y)
+ # We would not like to profile MMU APIs as these are used to switch TA
+diff --git a/core/arch/arm/mm/mobj_dyn_shm.c b/core/mm/mobj_dyn_shm.c
+similarity index 100%
+rename from core/arch/arm/mm/mobj_dyn_shm.c
+rename to core/mm/mobj_dyn_shm.c
+diff --git a/core/mm/sub.mk b/core/mm/sub.mk
+index 7d3c5ea0f..b917200dc 100644
+--- a/core/mm/sub.mk
++++ b/core/mm/sub.mk
+@@ -6,4 +6,6 @@ srcs-y += vm.c
+ srcs-y += core_mmu.c
+ srcs-y += pgt_cache.c
+ srcs-y += tee_mm.c
+-
++ifneq ($(CFG_CORE_FFA),y)
++srcs-$(CFG_CORE_DYN_SHM) += mobj_dyn_shm.c
++endif
+-- 
+2.34.1
+

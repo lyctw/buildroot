@@ -1,0 +1,380 @@
+From 62d2106247156b18095891e72163788c62016e55 Mon Sep 17 00:00:00 2001
+From: Alvin Chang <alvinga@andestech.com>
+Date: Tue, 5 Mar 2024 17:28:57 +0800
+Subject: [PATCH 10/17] core: riscv: Integrate with SBI RPXY interface
+
+Integrate with dev-rpxy-optee-v4
+
+Signed-off-by: Alvin Chang <alvinga@andestech.com>
+---
+ .../include/kernel/thread_private_arch.h      |   4 +-
+ core/arch/riscv/include/sbi.h                 |  43 +++++++
+ core/arch/riscv/kernel/boot.c                 |   2 +
+ core/arch/riscv/kernel/sbi.c                  |  23 ----
+ core/arch/riscv/kernel/sbi_rpxy.c             | 117 ++++++++++++++++++
+ core/arch/riscv/kernel/sub.mk                 |   1 +
+ core/arch/riscv/kernel/thread_optee_abi.c     |  14 +--
+ core/arch/riscv/kernel/thread_optee_abi_rv.S  |  16 ++-
+ 8 files changed, 184 insertions(+), 36 deletions(-)
+ create mode 100644 core/arch/riscv/kernel/sbi_rpxy.c
+
+diff --git a/core/arch/riscv/include/kernel/thread_private_arch.h b/core/arch/riscv/include/kernel/thread_private_arch.h
+index 84d63ac76..4f26b9bd0 100644
+--- a/core/arch/riscv/include/kernel/thread_private_arch.h
++++ b/core/arch/riscv/include/kernel/thread_private_arch.h
+@@ -88,9 +88,7 @@ void thread_handle_fast_abi(struct thread_abi_args *args);
+  * Called from assembly only, vector_std_abi_entry(). Handles a std ABI by
+  * dispatching it to the registered std ABI handler.
+  */
+-uint32_t thread_handle_std_abi(uint32_t a0, uint32_t a1, uint32_t a2,
+-			       uint32_t a3, uint32_t a4, uint32_t a5,
+-			       uint32_t a6, uint32_t a7);
++uint32_t thread_handle_std_abi(struct thread_abi_args *args);
+ 
+ /*
+  * Private functions made available for thread_rv.S
+diff --git a/core/arch/riscv/include/sbi.h b/core/arch/riscv/include/sbi.h
+index a2ae38c1a..6485d0d32 100644
+--- a/core/arch/riscv/include/sbi.h
++++ b/core/arch/riscv/include/sbi.h
+@@ -25,6 +25,7 @@
+ #define SBI_EXT_HSM			0x48534D
+ #define SBI_EXT_DBCN			0x4442434E
+ #define SBI_EXT_TEE			0x544545
++#define SBI_EXT_RPXY			0x52505859
+ 
+ #ifndef __ASSEMBLER__
+ 
+@@ -54,6 +55,14 @@ enum sbi_ext_dbcn_fid {
+ 	SBI_EXT_DBCN_CONSOLE_WRITE_BYTE = 2,
+ };
+ 
++enum sbi_ext_rpxy_fid {
++	SBI_EXT_RPXY_PROBE = 0,
++	SBI_EXT_RPXY_SETUP_SHMEM,
++	SBI_EXT_RPXY_SEND_NORMAL_MSG,
++	SBI_EXT_RPXY_SEND_POSTED_MSG,
++	SBI_EXT_RPXY_GET_NOTIFICATIONS,
++};
++
+ #include <compiler.h>
+ #include <encoding.h>
+ #include <stdint.h>
+@@ -61,11 +70,45 @@ enum sbi_ext_dbcn_fid {
+ #include <types_ext.h>
+ #include <util.h>
+ 
++struct sbiret {
++	long error;
++	long value;
++};
++
++#define _sbi_ecall(ext, fid, arg0, arg1, arg2, arg3, arg4, arg5, ...) ({  \
++	register unsigned long a0 asm("a0") = (unsigned long)arg0; \
++	register unsigned long a1 asm("a1") = (unsigned long)arg1; \
++	register unsigned long a2 asm("a2") = (unsigned long)arg2; \
++	register unsigned long a3 asm("a3") = (unsigned long)arg3; \
++	register unsigned long a4 asm("a4") = (unsigned long)arg4; \
++	register unsigned long a5 asm("a5") = (unsigned long)arg5; \
++	register unsigned long a6 asm("a6") = (unsigned long)fid;  \
++	register unsigned long a7 asm("a7") = (unsigned long)ext;  \
++	asm volatile ("ecall" \
++		: "+r" (a0), "+r" (a1) \
++		: "r" (a2), "r" (a3), "r" (a4), "r" (a5), "r"(a6), "r"(a7) \
++		: "memory"); \
++	(struct sbiret){ .error = a0, .value = a1 }; \
++})
++
++#define sbi_ecall(...) _sbi_ecall(__VA_ARGS__, 0, 0, 0, 0, 0, 0, 0)
++
+ int sbi_probe_extension(int extid);
+ void sbi_console_putchar(int ch);
+ int sbi_dbcn_write_byte(unsigned char ch);
+ int sbi_hsm_hart_start(uint32_t hartid, paddr_t start_addr, unsigned long arg);
+ 
++int sbi_rpxy_setup_shmem(unsigned int hartid);
++vaddr_t sbi_rpxy_get_shmem(void);
++int sbi_rpxy_send_normal_message(uint32_t transportid,
++				 uint32_t srvgrpid, uint8_t srvid,
++				 void *tx, unsigned long tx_msglen,
++				 void *rx, unsigned long *rx_msglen);
++
++void thread_return_to_udomain_by_rpxy(unsigned long arg0, unsigned long arg1,
++				      unsigned long arg2, unsigned long arg3,
++				      unsigned long arg4, unsigned long arg5);
++
+ #endif /*__ASSEMBLER__*/
+ #endif /*defined(CFG_RISCV_SBI)*/
+ #endif /*__SBI_H*/
+diff --git a/core/arch/riscv/kernel/boot.c b/core/arch/riscv/kernel/boot.c
+index b0020b724..d4e606f07 100644
+--- a/core/arch/riscv/kernel/boot.c
++++ b/core/arch/riscv/kernel/boot.c
+@@ -207,6 +207,7 @@ void boot_init_primary_late(unsigned long fdt,
+ 	IMSG("Primary CPU initialized");
+ 
+ #ifdef CFG_RISCV_S_MODE
++	sbi_rpxy_setup_shmem(get_core_pos());
+ 	start_secondary_cores();
+ #endif
+ }
+@@ -229,6 +230,7 @@ static void init_secondary_helper(unsigned long nsec_entry)
+ 	thread_init_per_cpu();
+ 	init_sec_mon(nsec_entry);
+ 	boot_secondary_init_intc();
++	sbi_rpxy_setup_shmem(get_core_pos());
+ 
+ 	IMSG("Secondary CPU %zu initialized", pos);
+ }
+diff --git a/core/arch/riscv/kernel/sbi.c b/core/arch/riscv/kernel/sbi.c
+index ce0cf3a6a..929f26a02 100644
+--- a/core/arch/riscv/kernel/sbi.c
++++ b/core/arch/riscv/kernel/sbi.c
+@@ -6,29 +6,6 @@
+ #include <riscv.h>
+ #include <sbi.h>
+ 
+-struct sbiret {
+-	long error;
+-	long value;
+-};
+-
+-#define _sbi_ecall(ext, fid, arg0, arg1, arg2, arg3, arg4, arg5, ...) ({  \
+-	register unsigned long a0 asm("a0") = (unsigned long)arg0; \
+-	register unsigned long a1 asm("a1") = (unsigned long)arg1; \
+-	register unsigned long a2 asm("a2") = (unsigned long)arg2; \
+-	register unsigned long a3 asm("a3") = (unsigned long)arg3; \
+-	register unsigned long a4 asm("a4") = (unsigned long)arg4; \
+-	register unsigned long a5 asm("a5") = (unsigned long)arg5; \
+-	register unsigned long a6 asm("a6") = (unsigned long)fid;  \
+-	register unsigned long a7 asm("a7") = (unsigned long)ext;  \
+-	asm volatile ("ecall" \
+-		: "+r" (a0), "+r" (a1) \
+-		: "r" (a2), "r" (a3), "r" (a4), "r" (a5), "r"(a6), "r"(a7) \
+-		: "memory"); \
+-	(struct sbiret){ .error = a0, .value = a1 }; \
+-})
+-
+-#define sbi_ecall(...) _sbi_ecall(__VA_ARGS__, 0, 0, 0, 0, 0, 0, 0)
+-
+ /**
+  * sbi_probe_extension() - Check if an SBI extension ID is supported or not.
+  * @extid: The extension ID to be probed.
+diff --git a/core/arch/riscv/kernel/sbi_rpxy.c b/core/arch/riscv/kernel/sbi_rpxy.c
+new file mode 100644
+index 000000000..c8f7fd75d
+--- /dev/null
++++ b/core/arch/riscv/kernel/sbi_rpxy.c
+@@ -0,0 +1,117 @@
++// SPDX-License-Identifier: BSD-2-Clause
++/*
++ * Copyright (c) 2024 Andes Technology Corporation
++ */
++
++#include <kernel/misc.h>
++#include <mm/core_memprot.h>
++#include <mm/core_mmu.h>
++#include <riscv.h>
++#include <sbi.h>
++#include <string.h>
++#include <types_ext.h>
++#include <util.h>
++
++struct optee_msg_payload {
++	unsigned long data[5];	/* a0~a4 */
++};
++
++#define RPXY_SHMEM_BASE_PHYS_ADDR	0xf17f0000
++register_phys_mem_pgdir(MEM_AREA_IO_NSEC, RPXY_SHMEM_BASE_PHYS_ADDR,
++			SMALL_PAGE_SIZE * 8);
++
++static paddr_t sbi_rpxy_shmem_pa[8] = {
++	RPXY_SHMEM_BASE_PHYS_ADDR,		/* Shared-memory for HART 0 */
++	RPXY_SHMEM_BASE_PHYS_ADDR + 0x1000,	/* Shared-memory for HART 1 */
++	RPXY_SHMEM_BASE_PHYS_ADDR + 0x2000,	/* Shared-memory for HART 2 */
++	RPXY_SHMEM_BASE_PHYS_ADDR + 0x3000,	/* Shared-memory for HART 3 */
++	RPXY_SHMEM_BASE_PHYS_ADDR + 0x4000,	/* Shared-memory for HART 4 */
++	RPXY_SHMEM_BASE_PHYS_ADDR + 0x5000,	/* Shared-memory for HART 5 */
++	RPXY_SHMEM_BASE_PHYS_ADDR + 0x6000,	/* Shared-memory for HART 6 */
++	RPXY_SHMEM_BASE_PHYS_ADDR + 0x7000,	/* Shared-memory for HART 7 */
++};
++
++struct sbi_rpxy {
++	struct io_pa_va shmem_base;
++	bool active;
++};
++
++static struct sbi_rpxy sbi_rpxy_hart_data[CFG_TEE_CORE_NB_CORE];
++
++vaddr_t sbi_rpxy_get_shmem(void)
++{
++	uint32_t exceptions = thread_mask_exceptions(THREAD_EXCP_ALL);
++	struct sbi_rpxy *rpxy = &sbi_rpxy_hart_data[get_core_pos()];
++	thread_unmask_exceptions(exceptions);
++
++	assert(rpxy->active);
++
++	return rpxy->shmem_base.va;
++}
++
++int sbi_rpxy_setup_shmem(unsigned int hartid)
++{
++	struct sbiret ret = { };
++	struct sbi_rpxy *rpxy = &sbi_rpxy_hart_data[hartid];
++
++	if (rpxy->active) {
++		return SBI_ERR_FAILURE;
++	}
++
++	rpxy->shmem_base.pa = sbi_rpxy_shmem_pa[hartid];
++	rpxy->shmem_base.va = io_pa_or_va(&rpxy->shmem_base, SMALL_PAGE_SIZE);
++
++	ret = sbi_ecall(SBI_EXT_RPXY, SBI_EXT_RPXY_SETUP_SHMEM,
++			SMALL_PAGE_SIZE, rpxy->shmem_base.pa, 0, 0);
++	if (ret.error) {
++		return SBI_ERR_FAILURE;
++	}
++
++	rpxy->active = true;
++
++	EMSG("hart[%d] PA: 0x%lX, VA: 0x%lX\n", hartid, rpxy->shmem_base.pa,
++	     rpxy->shmem_base.va);
++
++	return SBI_SUCCESS;
++}
++
++int sbi_rpxy_send_normal_message(uint32_t transportid,
++				 uint32_t srvgrpid, uint8_t srvid,
++				 void *tx, unsigned long tx_msglen,
++				 void *rx, unsigned long *rx_msglen)
++{
++	struct sbiret ret = { };
++	struct sbi_rpxy *rpxy = NULL;
++
++	thread_mask_exceptions(THREAD_EXCP_ALL);
++	rpxy = &sbi_rpxy_hart_data[get_core_pos()];
++
++	if (tx_msglen) {
++		memcpy((void *)rpxy->shmem_base.va, tx, tx_msglen);
++	}
++
++	ret = sbi_ecall(SBI_EXT_RPXY, SBI_EXT_RPXY_SEND_NORMAL_MSG, transportid,
++			srvgrpid, srvid, tx_msglen, 0, 0);
++
++	if (!ret.error && rx) {
++		memcpy(rx, (void *)rpxy->shmem_base.va, ret.value);
++		if (rx_msglen) {
++			*rx_msglen = ret.value;
++		}
++	}
++
++	return ret.error;
++}
++
++void thread_return_to_udomain_by_rpxy(unsigned long arg0, unsigned long arg1,
++				      unsigned long arg2, unsigned long arg3,
++				      unsigned long arg4,
++				      unsigned long arg5 __unused)
++{
++	struct optee_msg_payload optee_msg = {
++		.data = {arg0, arg1, arg2, arg3, arg4},
++	};
++
++	sbi_rpxy_send_normal_message(0x10000, 0x01, 0x02,
++				     &optee_msg, sizeof(optee_msg), NULL, NULL);
++}
+diff --git a/core/arch/riscv/kernel/sub.mk b/core/arch/riscv/kernel/sub.mk
+index ddfe31b3f..e43c01d4b 100644
+--- a/core/arch/riscv/kernel/sub.mk
++++ b/core/arch/riscv/kernel/sub.mk
+@@ -5,6 +5,7 @@ srcs-y += idle.c
+ srcs-$(CFG_RISCV_TIME_SOURCE_RDTIME) += tee_time_rdtime.c
+ srcs-$(CFG_RISCV_SBI) += sbi.c
+ srcs-$(CFG_RISCV_SBI_CONSOLE) += sbi_console.c
++srcs-$(CFG_RISCV_SBI) += sbi_rpxy.c
+ srcs-y += boot.c
+ srcs-y += entry.S
+ srcs-y += abort.c
+diff --git a/core/arch/riscv/kernel/thread_optee_abi.c b/core/arch/riscv/kernel/thread_optee_abi.c
+index d94da9311..5ad062d33 100644
+--- a/core/arch/riscv/kernel/thread_optee_abi.c
++++ b/core/arch/riscv/kernel/thread_optee_abi.c
+@@ -50,15 +50,13 @@ out:
+ 	assert(thread_get_exceptions() == THREAD_EXCP_ALL);
+ }
+ 
+-uint32_t thread_handle_std_abi(uint32_t a0, uint32_t a1, uint32_t a2,
+-			       uint32_t a3, uint32_t a4, uint32_t a5,
+-			       uint32_t a6 __unused, uint32_t a7 __maybe_unused)
++uint32_t thread_handle_std_abi(struct thread_abi_args *args)
+ {
+ 	uint32_t rv = OPTEE_ABI_RETURN_OK;
+ 
+ 	thread_check_canaries();
+ 
+-	if (IS_ENABLED(CFG_NS_VIRTUALIZATION) && virt_set_guest(a7))
++	if (IS_ENABLED(CFG_NS_VIRTUALIZATION) && virt_set_guest(args->a7))
+ 		return OPTEE_ABI_RETURN_ENOTAVAIL;
+ 
+ 	/*
+@@ -66,11 +64,13 @@ uint32_t thread_handle_std_abi(uint32_t a0, uint32_t a1, uint32_t a2,
+ 	 * on error. Successful return is done via thread_exit() or
+ 	 * thread_rpc().
+ 	 */
+-	if (a0 == OPTEE_ABI_CALL_RETURN_FROM_RPC) {
+-		thread_resume_from_rpc(a3, a1, a2, a4, a5);
++	if (args->a0 == OPTEE_ABI_CALL_RETURN_FROM_RPC) {
++		thread_resume_from_rpc(args->a3, args->a1, args->a2, args->a4,
++				       args->a5);
+ 		rv = OPTEE_ABI_RETURN_ERESUME;
+ 	} else {
+-		thread_alloc_and_run(a0, a1, a2, a3, 0, 0);
++		thread_alloc_and_run(args->a0, args->a1, args->a2, args->a3,
++				     0, 0);
+ 		rv = OPTEE_ABI_RETURN_ETHREAD_LIMIT;
+ 	}
+ 
+diff --git a/core/arch/riscv/kernel/thread_optee_abi_rv.S b/core/arch/riscv/kernel/thread_optee_abi_rv.S
+index ea114284a..3769f98e5 100644
+--- a/core/arch/riscv/kernel/thread_optee_abi_rv.S
++++ b/core/arch/riscv/kernel/thread_optee_abi_rv.S
+@@ -30,9 +30,7 @@
+ FUNC thread_return_to_udomain , :
+ 	/* Caller should provide arguments in a0~a5 */
+ #if defined(CFG_RISCV_WITH_M_MODE_SM)
+-	li	a7, SBI_EXT_TEE		/* extension ID */
+-	li	a6, 0			/* function ID (unused) */
+-	ecall
++	jal	thread_return_to_udomain_by_rpxy
+ #else
+ 	/* Other protocol */
+ #endif
+@@ -161,6 +159,7 @@ END_FUNC thread_rpc_xstatus
+ DECLARE_KEEP_PAGER thread_rpc_xstatus
+ 
+ LOCAL_FUNC vector_std_abi_entry, : , .identity_map
++	jal	sbi_rpxy_get_shmem
+ 	jal	thread_handle_std_abi
+ 	/*
+ 	 * Normally thread_handle_std_abi() should return via
+@@ -181,6 +180,17 @@ LOCAL_FUNC vector_std_abi_entry, : , .identity_map
+ END_FUNC vector_std_abi_entry
+ 
+ LOCAL_FUNC vector_fast_abi_entry , : , .identity_map
++	jal	sbi_rpxy_get_shmem
++	mv	t0, a0
++	ld	a0, 0(t0)
++	ld	a1, 8(t0)
++	ld	a2, 16(t0)
++	ld	a3, 24(t0)
++	ld	a4, 32(t0)
++	ld	a5, 40(t0)
++	ld	a6, 48(t0)
++	ld	a7, 56(t0)
++
+ 	addi    sp, sp, -THREAD_ABI_ARGS_SIZE
+ 	store_xregs sp, THREAD_ABI_ARGS_A0, REG_A0, REG_A7
+ 	mv      a0, sp
+-- 
+2.34.1
+

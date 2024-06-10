@@ -1,0 +1,53 @@
+From f0beb1b7d5aaaccd8a13b2ad3a0e2b4ac6ed0048 Mon Sep 17 00:00:00 2001
+From: Alvin Chang <alvinga@andestech.com>
+Date: Tue, 5 Mar 2024 15:35:39 +0800
+Subject: [PATCH 03/17] core: riscv: Save/restore callee-saved registers for
+ traps
+
+Signed-off-by: Alvin Chang <alvinga@andestech.com>
+---
+ core/arch/riscv/kernel/asm-defines.c | 1 +
+ core/arch/riscv/kernel/thread_rv.S   | 8 ++++----
+ 2 files changed, 5 insertions(+), 4 deletions(-)
+
+diff --git a/core/arch/riscv/kernel/asm-defines.c b/core/arch/riscv/kernel/asm-defines.c
+index 6dfdfcaca..8ccb77eb5 100644
+--- a/core/arch/riscv/kernel/asm-defines.c
++++ b/core/arch/riscv/kernel/asm-defines.c
+@@ -71,6 +71,7 @@ DEFINES
+ 	DEFINE(THREAD_TRAP_REG_T0, offsetof(struct thread_trap_regs, t0));
+ 	DEFINE(THREAD_TRAP_REG_S0, offsetof(struct thread_trap_regs, s0));
+ 	DEFINE(THREAD_TRAP_REG_A0, offsetof(struct thread_trap_regs, a0));
++	DEFINE(THREAD_TRAP_REG_S2, offsetof(struct thread_trap_regs, s2));
+ 	DEFINE(THREAD_TRAP_REG_T3, offsetof(struct thread_trap_regs, t3));
+ 	DEFINE(THREAD_TRAP_REG_EPC, offsetof(struct thread_trap_regs, epc));
+ 	DEFINE(THREAD_TRAP_REG_STATUS,
+diff --git a/core/arch/riscv/kernel/thread_rv.S b/core/arch/riscv/kernel/thread_rv.S
+index eeddc3467..7e0f82cd6 100644
+--- a/core/arch/riscv/kernel/thread_rv.S
++++ b/core/arch/riscv/kernel/thread_rv.S
+@@ -74,6 +74,8 @@
+ 	/* To unwind stack we need s0, which is frame pointer. */
+ 	store_xregs sp, THREAD_TRAP_REG_S0, REG_S0
+ #endif
++	store_xregs sp, THREAD_TRAP_REG_S0, REG_S0, REG_S1
++	store_xregs sp, THREAD_TRAP_REG_S2, REG_S2, REG_S11
+ 
+ 	csrr	t0, CSR_XIE
+ 	store_xregs sp, THREAD_TRAP_REG_IE, REG_T0
+@@ -113,10 +115,8 @@
+ 	load_xregs sp, THREAD_TRAP_REG_A0, REG_A0, REG_A7
+ 	load_xregs sp, THREAD_TRAP_REG_T0, REG_T0, REG_T2
+ 	load_xregs sp, THREAD_TRAP_REG_T3, REG_T3, REG_T6
+-#if defined(CFG_UNWIND)
+-	/* To unwind stack we need s0, which is frame pointer. */
+-	load_xregs sp, THREAD_TRAP_REG_S0, REG_S0
+-#endif
++	load_xregs sp, THREAD_TRAP_REG_S0, REG_S0, REG_S1
++	load_xregs sp, THREAD_TRAP_REG_S2, REG_S2, REG_S11
+ 
+ .if \mode == TRAP_MODE_USER
+ 	/* Set scratch as thread_core_local */
+-- 
+2.34.1
+

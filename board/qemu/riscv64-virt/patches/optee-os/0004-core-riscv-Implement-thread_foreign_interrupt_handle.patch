@@ -1,0 +1,233 @@
+From 67107614b46f6c6a6b0c9912042dab6299bb75f6 Mon Sep 17 00:00:00 2001
+From: Alvin Chang <alvinga@andestech.com>
+Date: Tue, 5 Mar 2024 15:36:26 +0800
+Subject: [PATCH 04/17] core: riscv: Implement
+ thread_foreign_interrupt_handler()
+
+We may receive foreign interrupts from other domains when we are running
+OP-TEE. Implement thread_foreign_interrupt_handler() for OP-TEE to
+suspend current thread and yield the control to other domains.
+
+Currently we regard timer interrupts as foreign interrupts and external
+interrupts as native interrupts.
+
+Signed-off-by: Alvin Chang <alvinga@andestech.com>
+---
+ core/arch/riscv/include/kernel/thread_arch.h  |  4 +-
+ .../include/kernel/thread_private_arch.h      |  3 +
+ core/arch/riscv/kernel/thread_arch.c          | 50 +++++++++++-
+ core/arch/riscv/kernel/thread_rv.S            | 81 +++++++++++++++++++
+ 4 files changed, 132 insertions(+), 6 deletions(-)
+
+diff --git a/core/arch/riscv/include/kernel/thread_arch.h b/core/arch/riscv/include/kernel/thread_arch.h
+index 3f4395061..c2ae7071f 100644
+--- a/core/arch/riscv/include/kernel/thread_arch.h
++++ b/core/arch/riscv/include/kernel/thread_arch.h
+@@ -191,8 +191,8 @@ struct user_mode_ctx;
+ #define CSR_XIE_TIE	BIT64(IRQ_XTIMER)
+ #define CSR_XIE_EIE	BIT64(IRQ_XEXT)
+ 
+-#define THREAD_EXCP_FOREIGN_INTR	CSR_XIE_EIE
+-#define THREAD_EXCP_NATIVE_INTR	        (CSR_XIE_SIE | CSR_XIE_TIE)
++#define THREAD_EXCP_FOREIGN_INTR	(CSR_XIE_TIE)
++#define THREAD_EXCP_NATIVE_INTR	        (CSR_XIE_EIE)
+ #define THREAD_EXCP_ALL			(THREAD_EXCP_FOREIGN_INTR |\
+ 					 THREAD_EXCP_NATIVE_INTR)
+ 
+diff --git a/core/arch/riscv/include/kernel/thread_private_arch.h b/core/arch/riscv/include/kernel/thread_private_arch.h
+index edf27a4e7..84d63ac76 100644
+--- a/core/arch/riscv/include/kernel/thread_private_arch.h
++++ b/core/arch/riscv/include/kernel/thread_private_arch.h
+@@ -120,6 +120,9 @@ void thread_exit_user_mode(unsigned long a0, unsigned long a1,
+ 			   unsigned long a2, unsigned long a3,
+ 			   unsigned long sp, unsigned long pc,
+ 			   unsigned long status);
++void thread_copy_trap_regs_to_ctx(struct thread_trap_regs *trap_regs,
++				  struct thread_ctx_regs *ctx_regs);
++void thread_foreign_interrupt_handler(struct thread_trap_regs *regs, bool user);
+ 
+ #endif /*__ASSEMBLER__*/
+ #endif /*__KERNEL_THREAD_PRIVATE_ARCH_H*/
+diff --git a/core/arch/riscv/kernel/thread_arch.c b/core/arch/riscv/kernel/thread_arch.c
+index 8654aa663..0cd22fdda 100644
+--- a/core/arch/riscv/kernel/thread_arch.c
++++ b/core/arch/riscv/kernel/thread_arch.c
+@@ -234,6 +234,47 @@ static void copy_trap_to_abort(struct thread_trap_regs *trap_regs,
+ 	};
+ }
+ 
++void thread_copy_trap_regs_to_ctx(struct thread_trap_regs *trap_regs,
++				  struct thread_ctx_regs *ctx_regs)
++{
++	*ctx_regs = (struct thread_ctx_regs) {
++		.status = trap_regs->status,
++		.epc = trap_regs->epc,
++		.ie = trap_regs->ie,
++		.ra = trap_regs->ra,
++		.sp = trap_regs->sp,
++		.gp = trap_regs->gp,
++		.tp = trap_regs->tp,
++		.t0 = trap_regs->t0,
++		.t1 = trap_regs->t1,
++		.t2 = trap_regs->t2,
++		.s0 = trap_regs->s0,
++		.s1 = trap_regs->s1,
++		.a0 = trap_regs->a0,
++		.a1 = trap_regs->a1,
++		.a2 = trap_regs->a2,
++		.a3 = trap_regs->a3,
++		.a4 = trap_regs->a4,
++		.a5 = trap_regs->a5,
++		.a6 = trap_regs->a6,
++		.a7 = trap_regs->a7,
++		.s2 = trap_regs->s2,
++		.s3 = trap_regs->s3,
++		.s4 = trap_regs->s4,
++		.s5 = trap_regs->s5,
++		.s6 = trap_regs->s6,
++		.s7 = trap_regs->s7,
++		.s8 = trap_regs->s8,
++		.s9 = trap_regs->s9,
++		.s10 = trap_regs->s10,
++		.s11 = trap_regs->s11,
++		.t3 = trap_regs->t3,
++		.t4 = trap_regs->t4,
++		.t5 = trap_regs->t5,
++		.t6 = trap_regs->t6,
++	};
++}
++
+ static void thread_abort_handler(struct thread_trap_regs *trap_regs,
+ 				 unsigned long cause)
+ {
+@@ -267,11 +308,12 @@ static void thread_irq_handler(void)
+ }
+ 
+ static void thread_interrupt_handler(unsigned long cause,
+-				     struct thread_trap_regs *regs)
++				     struct thread_trap_regs *regs,
++				     bool user)
+ {
+ 	switch (cause & LONG_MAX) {
+ 	case IRQ_XTIMER:
+-		clear_csr(CSR_XIE, CSR_XIE_TIE);
++		thread_foreign_interrupt_handler(regs, user);
+ 		break;
+ 	case IRQ_XSOFT:
+ 		thread_unhandled_trap(regs, cause);
+@@ -286,14 +328,14 @@ static void thread_interrupt_handler(unsigned long cause,
+ 
+ void thread_trap_handler(long cause, unsigned long epc __unused,
+ 			 struct thread_trap_regs *regs,
+-			 bool user __maybe_unused)
++			 bool user)
+ {
+ 	/*
+ 	 * The Interrupt bit (XLEN-1) in the cause register is set
+ 	 * if the trap was caused by an interrupt.
+ 	 */
+ 	if (cause < 0)
+-		thread_interrupt_handler(cause, regs);
++		thread_interrupt_handler(cause, regs, user);
+ 	/*
+ 	 * Otherwise, cause is never written by the implementation,
+ 	 * though it may be explicitly written by software.
+diff --git a/core/arch/riscv/kernel/thread_rv.S b/core/arch/riscv/kernel/thread_rv.S
+index 7e0f82cd6..f03127870 100644
+--- a/core/arch/riscv/kernel/thread_rv.S
++++ b/core/arch/riscv/kernel/thread_rv.S
+@@ -11,6 +11,9 @@
+ #include <mm/core_mmu.h>
+ #include <riscv.h>
+ #include <riscv_macros.S>
++#include <tee/optee_abi.h>
++#include <tee/teeabi_opteed.h>
++#include <tee/teeabi_opteed_macros.h>
+ 
+ .macro get_thread_ctx res, tmp0
+ 	lw	\tmp0, THREAD_CORE_LOCAL_CURR_THREAD(tp)
+@@ -324,3 +327,81 @@ FUNC thread_resume , :
+ 
+ 	XRET
+ END_FUNC thread_resume
++
++/*
++ * void thread_foreign_interrupt_handler(struct thread_trap_regs *regs,
++ *                                       bool user)
++ */
++FUNC thread_foreign_interrupt_handler , :
++	/* Mask all interrupt. */
++	csrw	CSR_XIE, x0
++
++	mv	s0, a0
++	mv	s1, a1
++	/* tp = struct thread_core_local */
++
++	/*
++	 * Update core local flags
++	 */
++	LDR	s2, THREAD_CORE_LOCAL_FLAGS(tp)
++	slli	s2, s2, THREAD_CLF_SAVED_SHIFT
++	ori	s2, s2, THREAD_CLF_TMP
++	ori	s2, s2, THREAD_CLF_FIQ
++	STR	s2, THREAD_CORE_LOCAL_FLAGS(tp)
++
++	/* Get pointer to current thread context into s2. */
++	get_thread_ctx s2, s3
++
++	/*
++	 * Copy struct thread_trap_regs to struct thread_ctx_regs.
++	 * a0 = struct thread_trap_regs *regs
++	 * a1 = struct thread_ctx_regs *ctx
++	 */
++	mv	a0, s0
++	mv	a1, s2
++	call	thread_copy_trap_regs_to_ctx
++
++	/*
++	 * We are trapping from thread_trap_vect(), but we are not exitting from
++	 * that function. Therefore, we need to restore necessary registers
++	 * here.
++	 * - For trap_from_user(), we restore CSR_XSCRATCH as tp in
++	     thread_resume_from_rpc().
++	 * - For trap_from_kernel(), we restore the value of kernel sp.
++	 */
++	bnez	s1, 1f
++	/* trap from kernel, ctx->sp += THREAD_TRAP_REGS_SIZE. */
++	LDR	s3, THREAD_CTX_REG_SP(s2)
++	addi	s3, s3, THREAD_TRAP_REGS_SIZE
++	STR	s3, THREAD_CTX_REG_SP(s2)
++1:
++	/* Load tmp_stack_va_end as current sp. */
++	LDR	sp, THREAD_CORE_LOCAL_TMP_STACK_VA_END(tp)
++
++	/*
++	 * Mark current thread as suspended.
++	 * a0 = THREAD_FLAGS_EXIT_ON_FOREIGN_INTR
++	 * a1 = status
++	 * a2 = epc
++	 * thread_state_suspend(flags, status, pc)
++	 */
++	li	a0, THREAD_FLAGS_EXIT_ON_FOREIGN_INTR
++	LDR	a1, THREAD_CTX_REG_STATUS(s2)
++	LDR	a2, THREAD_CTX_REG_EPC(s2)
++	call	thread_state_suspend
++	/* Now return value a0 contains suspended thread ID. */
++
++	/* Update core local flags */
++	LDR	s3, THREAD_CORE_LOCAL_FLAGS(tp)
++	srli	s3, s3, THREAD_CLF_SAVED_SHIFT
++	ori	s3, s3, THREAD_CLF_TMP
++	STR	s3, THREAD_CORE_LOCAL_FLAGS(tp)
++
++	/* Passing thread index in a0, and prepare to return to REE. */
++	mv	a4, a0
++	li	a0, TEEABI_OPTEED_RETURN_CALL_DONE
++	li	a1, OPTEE_ABI_RETURN_RPC_FOREIGN_INTR
++	mv	a2, x0
++	mv	a3, x0
++	j	thread_return_to_udomain
++END_FUNC thread_foreign_interrupt_handler
+-- 
+2.34.1
+

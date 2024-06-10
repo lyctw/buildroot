@@ -1,0 +1,55 @@
+From f1db2d528e29250b7259d666cf8ec09982171c73 Mon Sep 17 00:00:00 2001
+From: Alvin Chang <alvinga@andestech.com>
+Date: Wed, 27 Mar 2024 11:58:46 +0800
+Subject: [PATCH 14/17] core: riscv: Regard supervisor software interrupt as
+ foreign interrupt
+
+Refer to OP-TEE issue #6767 [1], Linux generates IPI as software
+interrupt to other harts, even if the target hart is in OP-TEE world.
+The hart in OP-TEE which receives supervisor software interrupt should
+yield the execution back to Linux to handle that software interrupt.
+
+In this commit, we classify CSR_XIE_SIE into THREAD_EXCP_FOREIGN_INTR,
+and call thread_foreign_interrupt_handler() when a software interrupt is
+taken to issue RPC to Linux.
+
+[1]: https://github.com/OP-TEE/optee_os/issues/6767
+
+Signed-off-by: Alvin Chang <alvinga@andestech.com>
+---
+ core/arch/riscv/include/kernel/thread_arch.h | 5 +++--
+ core/arch/riscv/kernel/thread_arch.c         | 2 +-
+ 2 files changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/core/arch/riscv/include/kernel/thread_arch.h b/core/arch/riscv/include/kernel/thread_arch.h
+index c2ae7071f..ba1756b91 100644
+--- a/core/arch/riscv/include/kernel/thread_arch.h
++++ b/core/arch/riscv/include/kernel/thread_arch.h
+@@ -191,8 +191,9 @@ struct user_mode_ctx;
+ #define CSR_XIE_TIE	BIT64(IRQ_XTIMER)
+ #define CSR_XIE_EIE	BIT64(IRQ_XEXT)
+ 
+-#define THREAD_EXCP_FOREIGN_INTR	(CSR_XIE_TIE)
+-#define THREAD_EXCP_NATIVE_INTR	        (CSR_XIE_EIE)
++#define THREAD_EXCP_FOREIGN_INTR	(CSR_XIE_EIE | CSR_XIE_TIE | \
++					 CSR_XIE_SIE)
++#define THREAD_EXCP_NATIVE_INTR	        (0)
+ #define THREAD_EXCP_ALL			(THREAD_EXCP_FOREIGN_INTR |\
+ 					 THREAD_EXCP_NATIVE_INTR)
+ 
+diff --git a/core/arch/riscv/kernel/thread_arch.c b/core/arch/riscv/kernel/thread_arch.c
+index 519dcb4ae..64f5c1c03 100644
+--- a/core/arch/riscv/kernel/thread_arch.c
++++ b/core/arch/riscv/kernel/thread_arch.c
+@@ -318,7 +318,7 @@ static void thread_interrupt_handler(unsigned long cause,
+ 		thread_foreign_interrupt_handler(regs, user);
+ 		break;
+ 	case IRQ_XSOFT:
+-		thread_unhandled_trap(regs, cause);
++		thread_foreign_interrupt_handler(regs, user);
+ 		break;
+ 	case IRQ_XEXT:
+ 		thread_foreign_interrupt_handler(regs, user);
+-- 
+2.34.1
+

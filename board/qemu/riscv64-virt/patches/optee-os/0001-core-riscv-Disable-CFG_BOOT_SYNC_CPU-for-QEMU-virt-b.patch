@@ -1,0 +1,27 @@
+From 291182bab4ca66ee063565e508b4b2d12af3d7ab Mon Sep 17 00:00:00 2001
+From: Alvin Chang <alvinga@andestech.com>
+Date: Tue, 5 Mar 2024 15:17:37 +0800
+Subject: [PATCH 01/17] core: riscv: Disable CFG_BOOT_SYNC_CPU for QEMU virt by
+ default
+
+Signed-off-by: Alvin Chang <alvinga@andestech.com>
+---
+ core/arch/riscv/plat-virt/conf.mk | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/core/arch/riscv/plat-virt/conf.mk b/core/arch/riscv/plat-virt/conf.mk
+index cc65e0a8c..935dadc2b 100644
+--- a/core/arch/riscv/plat-virt/conf.mk
++++ b/core/arch/riscv/plat-virt/conf.mk
+@@ -20,7 +20,7 @@ $(call force,CFG_CORE_SANITIZE_KADDRESS,n)
+ # Hart-related flags
+ CFG_TEE_CORE_NB_CORE ?= 1
+ CFG_NUM_THREADS ?= 1
+-$(call force,CFG_BOOT_SYNC_CPU,y)
++$(call force,CFG_BOOT_SYNC_CPU,n)
+ 
+ # RISC-V-specific flags
+ rv64-platform-isa ?= rv64imafdc_zicsr_zifencei
+-- 
+2.34.1
+
