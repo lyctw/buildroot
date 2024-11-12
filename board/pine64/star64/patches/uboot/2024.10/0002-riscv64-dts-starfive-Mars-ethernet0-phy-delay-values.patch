@@ -1,0 +1,35 @@
+From 933c82fdf3f60060004a0f11611ae4cf444257fd Mon Sep 17 00:00:00 2001
+From: E Shattow <e@freeshell.de>
+Date: Sat, 26 Oct 2024 05:40:15 -0700
+Subject: [PATCH 2/4] riscv64: dts: starfive: Mars ethernet0 phy delay values
+ sync with upstream Linux
+
+Milk-V Mars vendor board support package has value 0xa (multiplier=150) for both
+rx and tx delay. Upstream Linux has this as 1500 for both rx and tx delay. There
+is no documentation for why this should remain 1900 so correct it now. Mars CM
+and Mars CM Lite follow the same network phy delay values as Mars in the vendor
+board support package.
+
+Fixes: 92db23f7660de5897c8e3b91489b5b5780ffcd16
+Signed-off-by: E Shattow <e@freeshell.de>
+Reviewed-by: Leo Yu-Chi Liang <ycliang@andestech.com>
+---
+ board/starfive/visionfive2/spl.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/board/starfive/visionfive2/spl.c b/board/starfive/visionfive2/spl.c
+index f55c6b5d..44331704 100644
+--- a/board/starfive/visionfive2/spl.c
++++ b/board/starfive/visionfive2/spl.c
+@@ -41,7 +41,7 @@ static const struct starfive_vf2_pro milk_v_mars[] = {
+ 	{"/soc/ethernet@16030000/mdio/ethernet-phy@0",
+ 		"motorcomm,rx-data-drv-microamp", "2910"},
+ 	{"/soc/ethernet@16030000/mdio/ethernet-phy@0",
+-		"rx-internal-delay-ps", "1900"},
++		"rx-internal-delay-ps", "1500"},
+ 	{"/soc/ethernet@16030000/mdio/ethernet-phy@0",
+ 		"tx-internal-delay-ps", "1500"},
+ };
+-- 
+2.34.1
+

@@ -1,0 +1,49 @@
+From 17e482c99ce0f51139f6d006814a6ed3caa293bf Mon Sep 17 00:00:00 2001
+From: Minda Chen <minda.chen@starfivetech.com>
+Date: Sat, 12 Oct 2024 11:13:25 +0800
+Subject: [PATCH 4/4] spl: starfive: visionfive2: Disable USB overcurrent pin
+ by default.
+
+For some JH7110 boards, USB host overcurent pin is not reserved,
+To make USB host work, overcurrent pin must be disabled. So set the
+pin default disabled in spl stage.
+
+Signed-off-by: Minda Chen <minda.chen@starfivetech.com>
+---
+ arch/riscv/include/asm/arch-jh7110/gpio.h | 5 +++++
+ board/starfive/visionfive2/spl.c          | 3 +++
+ 2 files changed, 8 insertions(+)
+
+diff --git a/arch/riscv/include/asm/arch-jh7110/gpio.h b/arch/riscv/include/asm/arch-jh7110/gpio.h
+index 90aa2f8a..be2a1e0d 100644
+--- a/arch/riscv/include/asm/arch-jh7110/gpio.h
++++ b/arch/riscv/include/asm/arch-jh7110/gpio.h
+@@ -63,6 +63,11 @@ enum gpio_state {
+ 			GPIO_DIN_MASK << GPIO_SHIFT(gpi), \
+ 			((gpio + 2) & GPIO_DIN_MASK) << GPIO_SHIFT(gpi))
+ 
++#define SYS_IOMUX_DIN_DISABLED(gpi)\
++	clrsetbits_le32(JH7110_SYS_IOMUX + GPIO_DIN + GPIO_OFFSET(gpi), \
++			GPIO_DIN_MASK << GPIO_SHIFT(gpi), \
++			((0x1) & GPIO_DIN_MASK) << GPIO_SHIFT(gpi))
++
+ #define SYS_IOMUX_SET_DS(gpio, ds) \
+ 	clrsetbits_le32(JH7110_SYS_IOMUX + GPIO_CONFIG + gpio * 4, \
+ 			GPIO_DS_MASK, (ds) << GPIO_DS_SHIFT)
+diff --git a/board/starfive/visionfive2/spl.c b/board/starfive/visionfive2/spl.c
+index ad848e29..f63f36c7 100644
+--- a/board/starfive/visionfive2/spl.c
++++ b/board/starfive/visionfive2/spl.c
+@@ -459,6 +459,9 @@ void board_init_f(ulong dummy)
+ 			JH7110_CLK_CPU_ROOT_MASK,
+ 			BIT(JH7110_CLK_CPU_ROOT_SHIFT));
+ 
++	/* Set USB overcurrent overflow pin disable */
++	SYS_IOMUX_DIN_DISABLED(2);
++
+ 	ret = spl_board_init_f();
+ 	if (ret) {
+ 		debug("spl_board_init_f init failed: %d\n", ret);
+-- 
+2.34.1
+

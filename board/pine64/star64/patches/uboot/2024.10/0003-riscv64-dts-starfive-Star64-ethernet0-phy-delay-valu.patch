@@ -1,0 +1,34 @@
+From 5d115a9945a8f0a45117ac63928e70ea42a0ad88 Mon Sep 17 00:00:00 2001
+From: E Shattow <e@freeshell.de>
+Date: Sat, 26 Oct 2024 04:35:28 -0700
+Subject: [PATCH 3/4] riscv64: dts: starfive: Star64 ethernet0 phy delay values
+ sync with upstream Linux
+
+Fix bad delay values copied from vendor board support package of Star64, improves
+performance and reliability of bottom network port.
+
+Fixes: 7ebf7e77c0616ef0d2f58cc1684c230f656bd3d6
+Signed-off-by: E Shattow <e@freeshell.de>
+Reviewed-by: Leo Yu-Chi Liang <ycliang@andestech.com>
+---
+ board/starfive/visionfive2/spl.c | 4 +---
+ 1 file changed, 1 insertion(+), 3 deletions(-)
+
+diff --git a/board/starfive/visionfive2/spl.c b/board/starfive/visionfive2/spl.c
+index 44331704..ad848e29 100644
+--- a/board/starfive/visionfive2/spl.c
++++ b/board/starfive/visionfive2/spl.c
+@@ -103,9 +103,7 @@ static const struct starfive_vf2_pro star64_pine64[] = {
+ 	{"/soc/ethernet@16030000/mdio/ethernet-phy@0",
+ 		"motorcomm,rx-data-drv-microamp", "2910"},
+ 	{"/soc/ethernet@16030000/mdio/ethernet-phy@0",
+-		"rx-internal-delay-ps", "1900"},
+-	{"/soc/ethernet@16030000/mdio/ethernet-phy@0",
+-		"tx-internal-delay-ps", "1500"},
++		"rx-internal-delay-ps", "1500"},
+ 
+ 	{"/soc/ethernet@16040000/mdio/ethernet-phy@1",
+ 		"motorcomm,tx-clk-adj-enabled", NULL},
+-- 
+2.34.1
+
