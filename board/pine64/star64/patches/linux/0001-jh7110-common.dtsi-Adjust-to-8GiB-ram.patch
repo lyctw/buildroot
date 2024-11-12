@@ -1,0 +1,25 @@
+From 8eaed0ce2b332db6918339de1a510d8b679e4595 Mon Sep 17 00:00:00 2001
+From: Yu Chien Peter Lin <peterlin@andestech.com>
+Date: Tue, 5 Nov 2024 14:46:54 +0800
+Subject: [PATCH] jh7110-common.dtsi: Adjust to 8GiB ram
+
+---
+ arch/riscv/boot/dts/starfive/jh7110-common.dtsi | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/arch/riscv/boot/dts/starfive/jh7110-common.dtsi b/arch/riscv/boot/dts/starfive/jh7110-common.dtsi
+index d6c55f1cc..921535ced 100644
+--- a/arch/riscv/boot/dts/starfive/jh7110-common.dtsi
++++ b/arch/riscv/boot/dts/starfive/jh7110-common.dtsi
+@@ -27,7 +27,7 @@ chosen {
+ 
+ 	memory@40000000 {
+ 		device_type = "memory";
+-		reg = <0x0 0x40000000 0x1 0x0>;
++		reg = <0x0 0x40000000 0x2 0x0>;
+ 	};
+ 
+ 	gpio-restart {
+-- 
+2.34.1
+
